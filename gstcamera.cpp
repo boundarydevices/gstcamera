@@ -56,7 +56,7 @@ stringSplit_t::stringSplit_t( char *line )
         }
 }
 
-static int camera_fd = 6;
+static int camera_fd = 5;
 
 static int sp_command(char *cmd)
 {
