@@ -58,15 +58,44 @@ stringSplit_t::stringSplit_t( char *line )
 
 static int camera_fd = 6;
 
+static int sp_command(char *cmd)
+{
+    int ret = -1;
+    int value;
+    char *buf = cmd;
+          if(strlen(buf+2) <= 3) {
+           for (int i = 0; i < strlen(buf+2); i++ ){
+              if((buf[i+2] >= '0') && (buf[i+2] <= '9'));
+               else
+               return ret;
+            }
+        value = atoi(buf+2);
+       if((value >= 0) && (value <= 255))
+           return value;
+        else
+            return ret;
+    }
+    else
+        return ret;
+}
+
 static void process_command(char *cmd)
 {
-	stringSplit_t split(cmd);
-	printf("%u parts: ", split.getCount());
-	for (int i = 0; i < split.getCount(); i++ ) {
+    int sp_value = -1;
+
+    stringSplit_t split(cmd);
+   printf("count in process_command = %d\n",split.getCount());
+
+    if(!strncasecmp("SP",split.getPtr(0),2))
+        sp_value = sp_command(cmd);
+    printf("sp_value = %d\n",sp_value);
+    printf("%u parts: ", split.getCount());
+	for (int i = 0; i < split.getCount(); i++ ){
 		printf("%s\t", split.getPtr(i));
 	}
 	printf("\n");
-	if ((2 == split.getCount()) && !strcasecmp("camfd", split.getPtr(0))) {
+
+    if ((2 == split.getCount()) && !strcasecmp("camfd", split.getPtr(0))) {
 		camera_fd = strtoul(split.getPtr(1),0,0);
 	} else if((1 == split.getCount()) && !strcasecmp("af", split.getPtr(0))) {
 		printf( "---------do auto-focus here\n");
@@ -96,18 +125,44 @@ static void process_command(char *cmd)
 		else
 			printf("\nioctl V4L2_CID_AUTO_FOCUS_STATUS sucessful: %d\n",ret);
 	} else if((1 == split.getCount()) 
-		  && (1 == strlen(split.getPtr(0)))
-		  && (('F' == toupper(split.getPtr(0)[0])) /* far */
+		  && ((1 == strlen(split.getPtr(0)))||(2 == strlen(split.getPtr(0))))
+          &&
+            //  (('N' == toupper(split.getPtr(0)[0])) /* far */
+              (((!strcasecmp("N",split.getPtr(0))))
 		      ||
-		      ('N' == toupper(split.getPtr(0)[0])))) { /* near */
+              //('F' == toupper(split.getPtr(0)[0])) /*near*/
+              ((!strcasecmp("F",split.getPtr(0))))
+              ||
+              (!strncasecmp("FU",split.getPtr(0),2)) /*further*/
+              ||
+              (!strncasecmp("NE",split.getPtr(0),2)) /*nearer*/
+              )) {
 		struct v4l2_send_command_control vc;
-		vc.id = 101+('N' == toupper(split.getPtr(0)[0]));
-		int ret =ioctl(camera_fd,VIDIOC_SEND_COMMAND,(v4l2_send_command_control*)&vc); 
+         int id;
+        if((!strcasecmp("N",split.getPtr(0))))
+            id = 101;
+        else if ((!strcasecmp("F",split.getPtr(0))))
+            id = 102;
+        else if(!strncasecmp("FU",split.getPtr(0),2))
+            id = 103;
+        else if(!strncasecmp("NE",split.getPtr(0),2))
+            id = 104;
+        vc.id = id;
+        int ret = ioctl(camera_fd,VIDIOC_SEND_COMMAND,(v4l2_send_command_control*)&vc);
 		if(ret==-1)
 			printf("\n ioctl STEP fail: %m\n ");
 		else
 			printf("\nioctl STEP sucessful: %d\n",ret);
-	} else if((1 == split.getCount()) 
+    }else if((!strncasecmp("SP",split.getPtr(0),2)) && (sp_value >= 0)){
+          struct v4l2_send_command_control vc;
+           vc.id = 105;
+           vc.value0 = sp_value;
+           int ret = ioctl(camera_fd,VIDIOC_SEND_COMMAND,(v4l2_send_command_control*)&vc);
+           if(ret==-1)
+               printf("\n ioctl STEP fail: %m\n ");
+           else
+               printf("\nioctl STEP sucessful: %d\n",ret);
+    }else if((1 == split.getCount())
 		  && (4 == strlen(split.getPtr(0)))
 		  && !strncasecmp("awb",split.getPtr(0),3)
 		  && isdigit(split.getPtr(0)[3])) {
