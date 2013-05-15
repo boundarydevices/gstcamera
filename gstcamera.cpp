@@ -20,85 +20,11 @@ static void trimCtrl(char *buf){
         }
 }
 
-
-class stringSplit_t {
-public:
-        enum {
-                MAXPARTS = 16 
-        };
-
-        stringSplit_t( char *line );
-
-        unsigned getCount(void){ return count_ ;}
-        char const *getPtr(unsigned idx){ return ptrs_ [idx];}
-
-private:
-        stringSplit_t(stringSplit_t const &);
-
-        unsigned count_ ;
-        char    *ptrs_[MAXPARTS];
-};
-
-stringSplit_t::stringSplit_t( char *line )
-: count_( 0 )
-{
-        while ( (count_ < MAXPARTS) && (0 != *line) ) {
-                ptrs_[count_++] = line++ ;
-                while ( isgraph(*line) )
-                        line++ ;
-                if ( *line ) {
-                        *line++ = 0 ;
-                        while ( isspace(*line) )
-                                line++ ;
-                }
-                else
-                        break;
-        }
-}
-
-static int camera_fd = 5;
-
-static int sp_command(char *cmd)
-{
-    int ret = -1;
-    int value;
-    char *buf = cmd;
-          if(strlen(buf+2) <= 3) {
-           for (int i = 0; i < strlen(buf+2); i++ ){
-              if((buf[i+2] >= '0') && (buf[i+2] <= '9'));
-               else
-               return ret;
-            }
-        value = atoi(buf+2);
-       if((value >= 0) && (value <= 255))
-           return value;
-        else
-            return ret;
-    }
-    else
-        return ret;
-}
+static int camera_fd = 5; /* from /proc/`pidof gstcamera`/fd */
 
 static void process_command(char *cmd)
 {
-    int sp_value = -1;
-
-    stringSplit_t split(cmd);
-   printf("count in process_command = %d\n",split.getCount());
-
-    if(!strncasecmp("SP",split.getPtr(0),2))
-        sp_value = sp_command(cmd);
-    printf("sp_value = %d\n",sp_value);
-    printf("%u parts: ", split.getCount());
-	for (int i = 0; i < split.getCount(); i++ ){
-		printf("%s\t", split.getPtr(i));
-	}
-	printf("\n");
-
-    if ((2 == split.getCount()) && !strcasecmp("camfd", split.getPtr(0))) {
-		camera_fd = strtoul(split.getPtr(1),0,0);
-	} else if((1 == split.getCount()) && !strcasecmp("af", split.getPtr(0))) {
-		printf( "---------do auto-focus here\n");
+	if (0 == strcasecmp("af",cmd)) {
 		struct v4l2_control c;
 		c.id=V4L2_CID_AUTO_FOCUS_START;
 		int ret=ioctl(camera_fd,VIDIOC_S_CTRL,(v4l2_control *)&c);
@@ -106,90 +32,20 @@ static void process_command(char *cmd)
 			printf("\n ioctl V4L2_CID_AUTO_FOCUS_START fail: %m\n ");
 		else
 			printf("\nioctl V4L2_CID_AUTO_FOCUS_START sucessful: %d\n");
-	} else if((1 == split.getCount()) && !strcasecmp("af!", split.getPtr(0))) {
-		printf( "---------stop auto-focus here\n");
-		struct v4l2_control c;
-		c.id=V4L2_CID_AUTO_FOCUS_STOP;
-		int ret=ioctl(camera_fd,VIDIOC_S_CTRL,(v4l2_control *)&c);
-		if(ret==-1)
-			printf("\n ioctl V4L2_CID_AUTO_FOCUS_STOP fail: %m\n ");
-		else
-			printf("\nioctl V4L2_CID_AUTO_FOCUS_STOP sucessful: %d\n",ret);
-	} else if((1 == split.getCount()) && !strcasecmp("af?", split.getPtr(0))) {
-		printf( "---------query auto-focus here\n");
-		struct v4l2_control c;
-		c.id=V4L2_CID_AUTO_FOCUS_STATUS;
-		int ret=ioctl(camera_fd,VIDIOC_S_CTRL,(v4l2_control *)&c);
-		if(ret==-1)
-			printf("\n ioctl V4L2_CID_AUTO_FOCUS_STATUS fail: %m\n ");
-		else
-			printf("\nioctl V4L2_CID_AUTO_FOCUS_STATUS sucessful: %d\n",ret);
-	} else if((1 == split.getCount()) 
-		  && ((1 == strlen(split.getPtr(0)))||(2 == strlen(split.getPtr(0))))
-          &&
-            //  (('N' == toupper(split.getPtr(0)[0])) /* far */
-              (((!strcasecmp("N",split.getPtr(0))))
-		      ||
-              //('F' == toupper(split.getPtr(0)[0])) /*near*/
-              ((!strcasecmp("F",split.getPtr(0))))
-              ||
-              (!strncasecmp("FU",split.getPtr(0),2)) /*further*/
-              ||
-              (!strncasecmp("NE",split.getPtr(0),2)) /*nearer*/
-              )) {
+	} else if (0 == strncasecmp("sp",cmd,2)) {
 		struct v4l2_send_command_control vc;
-         int id;
-        if((!strcasecmp("N",split.getPtr(0))))
-            id = 101;
-        else if ((!strcasecmp("F",split.getPtr(0))))
-            id = 102;
-        else if(!strncasecmp("FU",split.getPtr(0),2))
-            id = 103;
-        else if(!strncasecmp("NE",split.getPtr(0),2))
-            id = 104;
-        vc.id = id;
-        int ret = ioctl(camera_fd,VIDIOC_SEND_COMMAND,(v4l2_send_command_control*)&vc);
+		vc.id = 105;
+		vc.value0 = strtoul(cmd+2,0,0);
+		int ret = ioctl(camera_fd,VIDIOC_SEND_COMMAND,(v4l2_send_command_control*)&vc);
 		if(ret==-1)
 			printf("\n ioctl STEP fail: %m\n ");
 		else
 			printf("\nioctl STEP sucessful: %d\n",ret);
-    }else if((!strncasecmp("SP",split.getPtr(0),2)) && (sp_value >= 0)){
-          struct v4l2_send_command_control vc;
-           vc.id = 105;
-           vc.value0 = sp_value;
-           int ret = ioctl(camera_fd,VIDIOC_SEND_COMMAND,(v4l2_send_command_control*)&vc);
-           if(ret==-1)
-               printf("\n ioctl STEP fail: %m\n ");
-           else
-               printf("\nioctl STEP sucessful: %d\n",ret);
-    }else if((1 == split.getCount())
-		  && (4 == strlen(split.getPtr(0)))
-		  && !strncasecmp("awb",split.getPtr(0),3)
-		  && isdigit(split.getPtr(0)[3])) {
-		struct v4l2_control c;
-		c.id=V4L2_CID_AUTO_N_PRESET_WHITE_BALANCE;
-		int idx=split.getPtr(0)[3]-'0';
-		switch(idx){
-			 case 1: c.value=V4L2_WHITE_BALANCE_AUTO;
-				break;
-			 case 2: c.value=V4L2_WHITE_BALANCE_INCANDESCENT;
-				break;
-			 case 3: c.value=V4L2_WHITE_BALANCE_DAYLIGHT;
-				break;
-			 case 4:c.value=V4L2_WHITE_BALANCE_FLUORESCENT;
-				break;
-			 case 5:c.value=V4L2_WHITE_BALANCE_FLASH;
-				break;
-			default:printf("\n wrong choice");
-				c.value=V4L2_WHITE_BALANCE_AUTO;
-		 };
-		 int ret=ioctl(camera_fd,VIDIOC_S_CTRL,(v4l2_control *)&c);
-		 if(ret==-1)
-			printf("\n ioctl white balance fail: %m\n ");
-		else
-			printf("\nioctl white balance sucessful:%d\n",ret);
+	} else if (0 == strncasecmp("fd",cmd,2)) {
+		camera_fd = strtoul(cmd+2,0,0);
+		printf("camera_fd set to %d\n", camera_fd);
 	} else
-		fprintf(stderr, "Unknown command: %s\n", cmd);
+                printf("unknown command %s\n", cmd);
 }
 
 int main (int argc, char const *const argv[])
