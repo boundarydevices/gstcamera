@@ -6,6 +6,7 @@
 #include <linux/videodev2.h>
 #include "v4l2-extra.h"
 #include <sys/ioctl.h>
+#include <dirent.h>
 
 static void trimCtrl(char *buf){
         char *tail = buf+strlen(buf);
@@ -20,7 +21,45 @@ static void trimCtrl(char *buf){
         }
 }
 
-static int camera_fd = 5; /* from /proc/`pidof gstcamera`/fd */
+static int camera_fd = -1;
+
+static void find_camera_fd(void)
+{
+   if (0 > camera_fd) {
+      char fdDir[256];
+
+      char *fdEnd = fdDir+sprintf( fdDir, "/proc/%d/fd", getpid());
+      DIR *dir = opendir( fdDir );
+      if( dir )
+      {
+	 *fdEnd++ = '/';
+	 dirent  *dirEntry ;
+	 while( 0 != ( dirEntry = readdir( dir ) ) )
+	 {
+	    if( isdigit( dirEntry->d_name[0] ) )
+	    {
+	       char target[256];
+	       ssize_t bytes;
+	       strcpy(fdEnd,dirEntry->d_name);
+	       if (0 < (bytes=readlink(fdDir, target,sizeof(target)))) {
+		       int which;
+		       target[bytes] = 0;
+		       printf(" %s\n", target);
+		       if ((1 == sscanf(target,"/dev/video%d",&which))
+			   &&
+			   (16 > which)){
+			       camera_fd=strtoul(dirEntry->d_name,0,0);
+			       printf("    /dev/video%d == fd%d\n", which, camera_fd);
+		       }
+	       }
+	       else
+		       printf("not link\n");
+	    }
+	 }
+	 closedir( dir );
+      }
+   }
+}
 
 static void process_command(char *cmd)
 {
@@ -31,7 +70,7 @@ static void process_command(char *cmd)
 		if(ret==-1)
 			printf("\n ioctl V4L2_CID_AUTO_FOCUS_START fail: %m\n ");
 		else
-			printf("\nioctl V4L2_CID_AUTO_FOCUS_START sucessful: %d\n");
+			printf("\nioctl V4L2_CID_AUTO_FOCUS_START sucessful\n");
 	} else if (0 == strncasecmp("sp",cmd,2)) {
 		struct v4l2_send_command_control vc;
 		vc.id = 105;
@@ -75,9 +114,11 @@ int main (int argc, char const *const argv[])
 	printf("pipeline is ready\n");
 	gst_element_set_state(pipeline, GST_STATE_PLAYING);
 
+	find_camera_fd();
 	char inbuf[80];
 	while (0 != fgets(inbuf,sizeof(inbuf),stdin)) {
 		trimCtrl(inbuf);
+		find_camera_fd();
 		process_command(inbuf);
 	}
 	return 0 ;
